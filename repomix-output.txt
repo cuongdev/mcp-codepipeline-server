@@ -1,0 +1,3456 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+
+Additional Info:
+----------------
+
+================================================================
+Directory Structure
+================================================================
+src/
+  config/
+    server-config.ts
+  controllers/
+    codepipeline.controller.ts
+  routes/
+    codepipeline.routes.ts
+  services/
+    codepipeline.service.ts
+  tools/
+    approve_action.ts
+    create_pipeline_webhook.ts
+    get_pipeline_details.ts
+    get_pipeline_execution_logs.ts
+    get_pipeline_metrics.ts
+    get_pipeline_state.ts
+    list_pipeline_executions.ts
+    list_pipelines.ts
+    retry_stage.ts
+    stop_pipeline_execution.ts
+    tag_pipeline_resource.ts
+    trigger_pipeline.ts
+  types/
+    codepipeline.ts
+    modelcontextprotocol-sdk.d.ts
+  utils/
+    env.ts
+  index.ts
+  mcp-server.ts
+  types.ts
+.env.example
+.gitignore
+ARCHITECTURE.md
+package.json
+README.md
+tsconfig.json
+
+================================================================
+Files
+================================================================
+
+================
+File: src/config/server-config.ts
+================
+interface ServerDescription {
+  name: string;
+  version: string;
+  displayName?: string;
+  description?: string;
+  publisher?: string;
+  homepage?: string;
+  license?: string;
+  repository?: string;
+}
+
+export const serverConfig: ServerDescription = {
+  name: "aws-codepipeline-mcp-server",
+  version: "1.0.0",
+  displayName: "AWS CodePipeline MCP Server",
+  description: "MCP server for interacting with AWS CodePipeline services",
+  publisher: "Cuong T Nguyen",
+  homepage: "https://cuong.asia",
+  license: "MIT",
+  repository: "https://github.com/cuongdev/mcp-codepipeline-server"
+};
+
+================
+File: src/controllers/codepipeline.controller.ts
+================
+import { Request, Response } from 'express';
+import { CodePipelineService } from '../services/codepipeline.service.js';
+import { 
+  ApprovalRequest, 
+  RetryStageRequest, 
+  TriggerPipelineRequest 
+} from '../types/codepipeline.js';
+
+export class CodePipelineController {
+  private codePipelineService: CodePipelineService;
+
+  constructor() {
+    this.codePipelineService = new CodePipelineService();
+  }
+
+  /**
+   * List all pipelines
+   */
+  listPipelines = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const pipelines = await this.codePipelineService.listPipelines();
+      res.status(200).json({ pipelines });
+    } catch (error) {
+      console.error('Error in listPipelines controller:', error);
+      res.status(500).json({ error: 'Failed to list pipelines' });
+    }
+  };
+
+  /**
+   * Get pipeline state
+   */
+  getPipelineState = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { pipelineName } = req.params;
+      
+      if (!pipelineName) {
+        res.status(400).json({ error: 'Pipeline name is required' });
+        return;
+      }
+
+      const pipelineState = await this.codePipelineService.getPipelineState(pipelineName);
+      res.status(200).json({ pipelineState });
+    } catch (error) {
+      console.error('Error in getPipelineState controller:', error);
+      res.status(500).json({ error: 'Failed to get pipeline state' });
+    }
+  };
+
+  /**
+   * List pipeline executions
+   */
+  listPipelineExecutions = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { pipelineName } = req.params;
+      
+      if (!pipelineName) {
+        res.status(400).json({ error: 'Pipeline name is required' });
+        return;
+      }
+
+      const executions = await this.codePipelineService.listPipelineExecutions(pipelineName);
+      res.status(200).json({ executions });
+    } catch (error) {
+      console.error('Error in listPipelineExecutions controller:', error);
+      res.status(500).json({ error: 'Failed to list pipeline executions' });
+    }
+  };
+
+  /**
+   * Approve a manual approval action
+   */
+  approveAction = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const approvalRequest: ApprovalRequest = req.body;
+      const { approved, comments } = req.body;
+      
+      if (!approvalRequest.pipelineName || !approvalRequest.stageName || 
+          !approvalRequest.actionName || !approvalRequest.token) {
+        res.status(400).json({ error: 'Missing required approval parameters' });
+        return;
+      }
+
+      await this.codePipelineService.approveAction(
+        approvalRequest, 
+        approved === true, 
+        comments || ''
+      );
+      
+      res.status(200).json({ 
+        message: `Action ${approved ? 'approved' : 'rejected'} successfully` 
+      });
+    } catch (error) {
+      console.error('Error in approveAction controller:', error);
+      res.status(500).json({ error: 'Failed to process approval' });
+    }
+  };
+
+  /**
+   * Retry a failed stage
+   */
+  retryStage = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const retryRequest: RetryStageRequest = req.body;
+      
+      if (!retryRequest.pipelineName || !retryRequest.stageName || !retryRequest.pipelineExecutionId) {
+        res.status(400).json({ error: 'Missing required retry parameters' });
+        return;
+      }
+
+      await this.codePipelineService.retryStageExecution(retryRequest);
+      res.status(200).json({ message: 'Stage retry initiated successfully' });
+    } catch (error) {
+      console.error('Error in retryStage controller:', error);
+      res.status(500).json({ error: 'Failed to retry stage' });
+    }
+  };
+
+  /**
+   * Trigger a pipeline execution
+   */
+  triggerPipeline = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const triggerRequest: TriggerPipelineRequest = req.body;
+      
+      if (!triggerRequest.pipelineName) {
+        res.status(400).json({ error: 'Pipeline name is required' });
+        return;
+      }
+
+      const executionId = await this.codePipelineService.startPipelineExecution(triggerRequest);
+      res.status(200).json({ 
+        message: 'Pipeline triggered successfully', 
+        executionId 
+      });
+    } catch (error) {
+      console.error('Error in triggerPipeline controller:', error);
+      res.status(500).json({ error: 'Failed to trigger pipeline' });
+    }
+  };
+
+  /**
+   * Get pipeline execution logs
+   */
+  getPipelineExecutionLogs = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { pipelineName, executionId } = req.params;
+      
+      if (!pipelineName || !executionId) {
+        res.status(400).json({ error: 'Pipeline name and execution ID are required' });
+        return;
+      }
+
+      const logs = await this.codePipelineService.getPipelineExecutionLogs(pipelineName, executionId);
+      res.status(200).json({ logs });
+    } catch (error) {
+      console.error('Error in getPipelineExecutionLogs controller:', error);
+      res.status(500).json({ error: 'Failed to get pipeline execution logs' });
+    }
+  };
+
+  /**
+   * Stop pipeline execution
+   */
+  stopPipelineExecution = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { pipelineName, executionId } = req.params;
+      const { reason } = req.body;
+      
+      if (!pipelineName || !executionId) {
+        res.status(400).json({ error: 'Pipeline name and execution ID are required' });
+        return;
+      }
+
+      await this.codePipelineService.stopPipelineExecution(pipelineName, executionId, reason);
+      res.status(200).json({ message: 'Pipeline execution stopped successfully' });
+    } catch (error) {
+      console.error('Error in stopPipelineExecution controller:', error);
+      res.status(500).json({ error: 'Failed to stop pipeline execution' });
+    }
+  };
+}
+
+================
+File: src/routes/codepipeline.routes.ts
+================
+import { Router } from 'express';
+import { CodePipelineController } from '../controllers/codepipeline.controller.js';
+
+const router = Router();
+const codePipelineController = new CodePipelineController();
+
+// List all pipelines
+router.get('/pipelines', codePipelineController.listPipelines);
+
+// Get pipeline state
+router.get('/pipelines/:pipelineName/state', codePipelineController.getPipelineState);
+
+// List pipeline executions
+router.get('/pipelines/:pipelineName/executions', codePipelineController.listPipelineExecutions);
+
+// Approve or reject a manual approval action
+router.post('/pipelines/approve', codePipelineController.approveAction);
+
+// Retry a failed stage
+router.post('/pipelines/retry-stage', codePipelineController.retryStage);
+
+// Trigger a pipeline execution
+router.post('/pipelines/trigger', codePipelineController.triggerPipeline);
+
+// Get pipeline execution logs
+router.get('/pipelines/:pipelineName/executions/:executionId/logs', codePipelineController.getPipelineExecutionLogs);
+
+// Stop pipeline execution
+router.post('/pipelines/:pipelineName/executions/:executionId/stop', codePipelineController.stopPipelineExecution);
+
+export default router;
+
+================
+File: src/services/codepipeline.service.ts
+================
+import AWS from 'aws-sdk';
+import {
+  PipelineSummary,
+  PipelineState,
+  PipelineExecution,
+  ApprovalRequest,
+  RetryStageRequest,
+  TriggerPipelineRequest,
+  StageState
+} from '../types/codepipeline.js';
+import { getEnv } from '../utils/env.js';
+
+export class CodePipelineService {
+  private codepipeline: AWS.CodePipeline;
+
+  constructor() {
+    // Get AWS configuration from environment variables
+    const region = getEnv('AWS_REGION', 'us-west-2'); // Default to us-west-2 if not provided
+    const accessKeyId = getEnv('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = getEnv('AWS_SECRET_ACCESS_KEY');
+    
+    // Configure AWS SDK
+    const awsConfig: AWS.ConfigurationOptions = { region };
+    
+    // Add credentials if provided
+    if (accessKeyId && secretAccessKey) {
+      awsConfig.credentials = new AWS.Credentials({
+        accessKeyId,
+        secretAccessKey
+      });
+    }
+    
+    // Update AWS SDK configuration
+    AWS.config.update(awsConfig);
+    
+    console.log(`AWS CodePipeline service initialized with region: ${region}`);
+    this.codepipeline = new AWS.CodePipeline(awsConfig);
+  }
+
+  /**
+   * List all pipelines
+   */
+  async listPipelines(): Promise<PipelineSummary[]> {
+    try {
+      const response = await this.codepipeline.listPipelines().promise();
+      
+      return response.pipelines?.map(pipeline => ({
+        name: pipeline.name || '',
+        version: pipeline.version || 0,
+        created: pipeline.created?.toISOString() || '',
+        updated: pipeline.updated?.toISOString() || ''
+      })) || [];
+    } catch (error) {
+      console.error('Error listing pipelines:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get pipeline state
+   */
+  async getPipelineState(pipelineName: string): Promise<PipelineState> {
+    try {
+      const response = await this.codepipeline.getPipelineState({ name: pipelineName }).promise();
+      
+      // Convert AWS.CodePipeline.StageState[] to our StageState[]
+      const stageStates: StageState[] = response.stageStates?.map(stage => {
+        // Convert TransitionState
+        const inboundTransitionState = stage.inboundTransitionState ? {
+          enabled: stage.inboundTransitionState.enabled === undefined ? false : stage.inboundTransitionState.enabled,
+          lastChangedBy: stage.inboundTransitionState.lastChangedBy,
+          lastChangedAt: stage.inboundTransitionState.lastChangedAt,
+          disabledReason: stage.inboundTransitionState.disabledReason
+        } : undefined;
+        
+        // Convert StageExecution
+        const latestExecution = stage.latestExecution ? {
+          pipelineExecutionId: stage.latestExecution.pipelineExecutionId || '',
+          status: stage.latestExecution.status || ''
+          // AWS SDK types may have different property names, we're mapping to our interface
+        } : undefined;
+        
+        // Convert ActionStates
+        const actionStates = (stage.actionStates || []).map(action => {
+          // Convert ActionExecution
+          const latestExecution = action.latestExecution ? {
+            status: action.latestExecution.status || '',
+            summary: action.latestExecution.summary,
+            lastStatusChange: action.latestExecution.lastStatusChange || new Date().toISOString(),
+            token: action.latestExecution.token,
+            externalExecutionId: action.latestExecution.externalExecutionId,
+            externalExecutionUrl: action.latestExecution.externalExecutionUrl,
+            errorDetails: action.latestExecution.errorDetails ? {
+              code: action.latestExecution.errorDetails.code || '',
+              message: action.latestExecution.errorDetails.message || ''
+            } : undefined
+          } : undefined;
+          
+          // Convert ActionRevision
+          const currentRevision = action.currentRevision ? {
+            revisionId: action.currentRevision.revisionId || '',
+            revisionChangeId: action.currentRevision.revisionChangeId || '',
+            created: action.currentRevision.created || new Date().toISOString()
+          } : undefined;
+          
+          return {
+            actionName: action.actionName || '',
+            currentRevision,
+            latestExecution,
+            entityUrl: action.entityUrl
+          };
+        });
+        
+        return {
+          stageName: stage.stageName || '',
+          inboundTransitionState,
+          actionStates,
+          latestExecution
+        };
+      }) || [];
+      
+      return {
+        pipelineName: response.pipelineName || '',
+        pipelineVersion: response.pipelineVersion || 0,
+        stageStates: stageStates,
+        created: response.created?.toISOString() || '',
+        updated: response.updated?.toISOString() || ''
+      };
+    } catch (error) {
+      console.error(`Error getting pipeline state for ${pipelineName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get pipeline executions
+   */
+  async listPipelineExecutions(pipelineName: string): Promise<PipelineExecution[]> {
+    try {
+      const response = await this.codepipeline.listPipelineExecutions({ 
+        pipelineName 
+      }).promise();
+      
+      return response.pipelineExecutionSummaries?.map(execution => ({
+        pipelineExecutionId: execution.pipelineExecutionId || '',
+        status: execution.status || '',
+        artifactRevisions: execution.sourceRevisions?.map(revision => ({
+          name: revision.actionName || '',
+          revisionId: revision.revisionId || '',
+          revisionChangeIdentifier: revision.revisionUrl || '', // Fixed property name
+          revisionSummary: revision.revisionSummary || '',
+          created: new Date().toISOString(), // Fixed missing property
+          revisionUrl: revision.revisionUrl || ''
+        })) || []
+      })) || [];
+    } catch (error) {
+      console.error(`Error listing pipeline executions for ${pipelineName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Approve or reject a manual approval action
+   */
+  async approveAction(request: ApprovalRequest, approved: boolean, comments: string = ''): Promise<void> {
+    try {
+      await this.codepipeline.putApprovalResult({
+        pipelineName: request.pipelineName,
+        stageName: request.stageName,
+        actionName: request.actionName,
+        token: request.token,
+        result: {
+          status: approved ? 'Approved' : 'Rejected',
+          summary: comments
+        }
+      }).promise();
+    } catch (error) {
+      console.error(`Error ${approved ? 'approving' : 'rejecting'} action:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Retry a failed stage
+   */
+  async retryStageExecution(request: RetryStageRequest): Promise<void> {
+    try {
+      await this.codepipeline.retryStageExecution({
+        pipelineName: request.pipelineName,
+        stageName: request.stageName,
+        pipelineExecutionId: request.pipelineExecutionId,
+        retryMode: 'FAILED_ACTIONS'
+      }).promise();
+    } catch (error) {
+      console.error(`Error retrying stage execution:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Trigger a pipeline execution
+   */
+  async startPipelineExecution(request: TriggerPipelineRequest): Promise<string> {
+    try {
+      const response = await this.codepipeline.startPipelineExecution({
+        name: request.pipelineName
+      }).promise();
+      
+      return response.pipelineExecutionId || '';
+    } catch (error) {
+      console.error(`Error starting pipeline execution:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get pipeline execution logs
+   */
+  async getPipelineExecutionLogs(pipelineName: string, executionId: string): Promise<AWS.CodePipeline.GetPipelineExecutionOutput> {
+    try {
+      return await this.codepipeline.getPipelineExecution({
+        pipelineName,
+        pipelineExecutionId: executionId
+      }).promise();
+    } catch (error) {
+      console.error(`Error getting pipeline execution logs:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stop pipeline execution
+   */
+  async stopPipelineExecution(pipelineName: string, executionId: string, reason: string = 'Stopped by user'): Promise<void> {
+    try {
+      await this.codepipeline.stopPipelineExecution({
+        pipelineName,
+        pipelineExecutionId: executionId,
+        reason,
+        abandon: false
+      }).promise();
+    } catch (error) {
+      console.error(`Error stopping pipeline execution:`, error);
+      throw error;
+    }
+  }
+}
+
+================
+File: src/tools/approve_action.ts
+================
+import { CodePipelineManager } from "../types.js";
+
+export const approveActionSchema = {
+  name: "approve_action",
+  description: "Approve or reject a manual approval action",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pipelineName: { 
+        type: "string",
+        description: "Name of the pipeline"
+      },
+      stageName: { 
+        type: "string",
+        description: "Name of the stage"
+      },
+      actionName: { 
+        type: "string",
+        description: "Name of the action"
+      },
+      token: { 
+        type: "string",
+        description: "Approval token"
+      },
+      approved: { 
+        type: "boolean",
+        description: "Boolean indicating approval or rejection"
+      },
+      comments: { 
+        type: "string",
+        description: "Optional comments"
+      }
+    },
+    required: ["pipelineName", "stageName", "actionName", "token", "approved"],
+  },
+} as const;
+
+export async function approveAction(
+  codePipelineManager: CodePipelineManager, 
+  input: {
+    pipelineName: string;
+    stageName: string;
+    actionName: string;
+    token: string;
+    approved: boolean;
+    comments?: string;
+  }
+) {
+  const { pipelineName, stageName, actionName, token, approved, comments } = input;
+  const codepipeline = codePipelineManager.getCodePipeline();
+  
+  await codepipeline.putApprovalResult({
+    pipelineName,
+    stageName,
+    actionName,
+    token,
+    result: {
+      status: approved ? 'Approved' : 'Rejected',
+      summary: comments || ''
+    }
+  }).promise();
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ 
+          message: `Action ${approved ? 'approved' : 'rejected'} successfully` 
+        }, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/tools/create_pipeline_webhook.ts
+================
+import { CodePipelineManager } from "../types.js";
+import AWS from 'aws-sdk';
+
+export const createPipelineWebhookSchema = {
+  name: "create_pipeline_webhook",
+  description: "Create a webhook for a pipeline to enable automatic triggering",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pipelineName: { 
+        type: "string",
+        description: "Name of the pipeline"
+      },
+      webhookName: { 
+        type: "string",
+        description: "Name for the webhook"
+      },
+      targetAction: { 
+        type: "string",
+        description: "The name of the action in the pipeline that processes the webhook"
+      },
+      authentication: { 
+        type: "string",
+        description: "Authentication method for the webhook",
+        enum: ["GITHUB_HMAC", "IP", "UNAUTHENTICATED"]
+      },
+      authenticationConfiguration: {
+        type: "object",
+        description: "Authentication configuration based on the authentication type",
+        properties: {
+          SecretToken: {
+            type: "string",
+            description: "Secret token for GITHUB_HMAC authentication"
+          },
+          AllowedIpRange: {
+            type: "string",
+            description: "Allowed IP range for IP authentication"
+          }
+        }
+      },
+      filters: {
+        type: "array",
+        description: "Event filters for the webhook",
+        items: {
+          type: "object",
+          properties: {
+            jsonPath: {
+              type: "string",
+              description: "JSON path to filter events"
+            },
+            matchEquals: {
+              type: "string",
+              description: "Value to match in the JSON path"
+            }
+          },
+          required: ["jsonPath"]
+        }
+      }
+    },
+    required: ["pipelineName", "webhookName", "targetAction", "authentication"],
+  },
+} as const;
+
+export async function createPipelineWebhook(
+  codePipelineManager: CodePipelineManager, 
+  input: {
+    pipelineName: string;
+    webhookName: string;
+    targetAction: string;
+    authentication: string;
+    authenticationConfiguration?: {
+      SecretToken?: string;
+      AllowedIpRange?: string;
+    };
+    filters?: Array<{
+      jsonPath: string;
+      matchEquals?: string;
+    }>;
+  }
+) {
+  const { 
+    pipelineName, 
+    webhookName, 
+    targetAction, 
+    authentication, 
+    authenticationConfiguration = {}, 
+    filters = [] 
+  } = input;
+  
+  const codepipeline = codePipelineManager.getCodePipeline();
+  
+  // Create the webhook
+  const response = await codepipeline.putWebhook({
+    webhook: {
+      name: webhookName,
+      targetPipeline: pipelineName,
+      targetAction: targetAction,
+      filters: filters.map(filter => ({
+        jsonPath: filter.jsonPath,
+        matchEquals: filter.matchEquals
+      })),
+      authentication,
+      authenticationConfiguration
+    }
+  }).promise();
+  
+  // Register the webhook
+  await codepipeline.registerWebhookWithThirdParty({
+    webhookName
+  }).promise();
+
+  // Extract webhook details safely
+  const webhookDetails = {
+    name: webhookName,
+    url: response.webhook ? String(response.webhook.url) : undefined,
+    targetPipeline: pipelineName,
+    targetAction: targetAction
+  };
+  
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ 
+          message: "Pipeline webhook created and registered successfully",
+          webhookDetails
+        }, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/tools/get_pipeline_details.ts
+================
+import { CodePipelineManager } from "../types.js";
+
+export const getPipelineDetailsSchema = {
+  name: "get_pipeline_details",
+  description: "Get the full definition of a specific pipeline",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pipelineName: { 
+        type: "string",
+        description: "Name of the pipeline"
+      }
+    },
+    required: ["pipelineName"],
+  },
+} as const;
+
+export async function getPipelineDetails(
+  codePipelineManager: CodePipelineManager, 
+  input: { pipelineName: string }
+) {
+  const { pipelineName } = input;
+  const codepipeline = codePipelineManager.getCodePipeline();
+  
+  const response = await codepipeline.getPipeline({ name: pipelineName }).promise();
+  
+  // Format the pipeline details for better readability
+  const pipelineDetails = {
+    pipeline: {
+      name: response.pipeline?.name || '',
+      roleArn: response.pipeline?.roleArn || '',
+      artifactStore: response.pipeline?.artifactStore,
+      stages: response.pipeline?.stages?.map(stage => ({
+        name: stage.name,
+        actions: stage.actions?.map(action => ({
+          name: action.name,
+          actionTypeId: action.actionTypeId,
+          runOrder: action.runOrder,
+          configuration: action.configuration,
+          outputArtifacts: action.outputArtifacts,
+          inputArtifacts: action.inputArtifacts,
+          region: action.region,
+          namespace: action.namespace
+        }))
+      })),
+      version: response.pipeline?.version || 0,
+      metadata: {
+        created: response.metadata?.created?.toISOString() || '',
+        updated: response.metadata?.updated?.toISOString() || '',
+        pipelineArn: response.metadata?.pipelineArn || ''
+      }
+    }
+  };
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(pipelineDetails, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/tools/get_pipeline_execution_logs.ts
+================
+import { CodePipelineManager } from "../types.js";
+import AWS from 'aws-sdk';
+
+export const getPipelineExecutionLogsSchema = {
+  name: "get_pipeline_execution_logs",
+  description: "Get logs for a pipeline execution",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pipelineName: { 
+        type: "string",
+        description: "Name of the pipeline"
+      },
+      executionId: { 
+        type: "string",
+        description: "Execution ID"
+      }
+    },
+    required: ["pipelineName", "executionId"],
+  },
+} as const;
+
+export async function getPipelineExecutionLogs(
+  codePipelineManager: CodePipelineManager, 
+  input: {
+    pipelineName: string;
+    executionId: string;
+  }
+) {
+  const { pipelineName, executionId } = input;
+  const codepipeline = codePipelineManager.getCodePipeline();
+  
+  const response = await codepipeline.getPipelineExecution({
+    pipelineName,
+    pipelineExecutionId: executionId
+  }).promise();
+
+  // Format the response for better readability
+  // Extract and format the execution details
+  const logs = {
+    pipelineName: response.pipelineExecution?.pipelineName || pipelineName,
+    pipelineVersion: response.pipelineExecution?.pipelineVersion || '1',
+    pipelineExecution: {
+      pipelineExecutionId: response.pipelineExecution?.pipelineExecutionId,
+      status: response.pipelineExecution?.status,
+      artifactRevisions: response.pipelineExecution?.artifactRevisions?.map((revision: AWS.CodePipeline.ArtifactRevision) => ({
+        name: revision.name,
+        revisionId: revision.revisionId,
+        revisionSummary: revision.revisionSummary,
+        revisionUrl: revision.revisionUrl
+      }))
+    }
+  };
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ logs }, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/tools/get_pipeline_metrics.ts
+================
+import { CodePipelineManager } from "../types.js";
+import AWS from 'aws-sdk';
+
+export const getPipelineMetricsSchema = {
+  name: "get_pipeline_metrics",
+  description: "Get performance metrics for a pipeline",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pipelineName: { 
+        type: "string",
+        description: "Name of the pipeline"
+      },
+      period: {
+        type: "number",
+        description: "Time period in seconds for the metrics (default: 86400 - 1 day)",
+        default: 86400
+      },
+      startTime: {
+        type: "string",
+        description: "Start time for metrics in ISO format (default: 1 week ago)",
+        format: "date-time"
+      },
+      endTime: {
+        type: "string",
+        description: "End time for metrics in ISO format (default: now)",
+        format: "date-time"
+      }
+    },
+    required: ["pipelineName"],
+  },
+} as const;
+
+export async function getPipelineMetrics(
+  codePipelineManager: CodePipelineManager, 
+  input: {
+    pipelineName: string;
+    period?: number;
+    startTime?: string;
+    endTime?: string;
+  }
+) {
+  const { pipelineName, period = 86400 } = input;
+  
+  // Set default time range if not provided
+  const endTime = input.endTime ? new Date(input.endTime) : new Date();
+  const startTime = input.startTime ? new Date(input.startTime) : new Date(endTime.getTime() - 7 * 24 * 60 * 60 * 1000); // 1 week ago
+  
+  // Create CloudWatch client
+  const cloudwatch = new AWS.CloudWatch({
+    region: codePipelineManager.getCodePipeline().config.region
+  });
+  
+  // Get execution success/failure metrics
+  const successMetric = await cloudwatch.getMetricStatistics({
+    Namespace: 'AWS/CodePipeline',
+    MetricName: 'SucceededPipeline',
+    Dimensions: [{ Name: 'PipelineName', Value: pipelineName }],
+    StartTime: startTime,
+    EndTime: endTime,
+    Period: period,
+    Statistics: ['Sum', 'Average', 'Maximum']
+  }).promise();
+  
+  const failedMetric = await cloudwatch.getMetricStatistics({
+    Namespace: 'AWS/CodePipeline',
+    MetricName: 'FailedPipeline',
+    Dimensions: [{ Name: 'PipelineName', Value: pipelineName }],
+    StartTime: startTime,
+    EndTime: endTime,
+    Period: period,
+    Statistics: ['Sum', 'Average', 'Maximum']
+  }).promise();
+  
+  // Get execution time metrics
+  const executionTimeMetric = await cloudwatch.getMetricStatistics({
+    Namespace: 'AWS/CodePipeline',
+    MetricName: 'PipelineExecutionTime',
+    Dimensions: [{ Name: 'PipelineName', Value: pipelineName }],
+    StartTime: startTime,
+    EndTime: endTime,
+    Period: period,
+    Statistics: ['Average', 'Minimum', 'Maximum']
+  }).promise();
+  
+  // Calculate success rate
+  const totalSuccessful = successMetric.Datapoints?.reduce((sum, point) => sum + (point.Sum || 0), 0) || 0;
+  const totalFailed = failedMetric.Datapoints?.reduce((sum, point) => sum + (point.Sum || 0), 0) || 0;
+  const totalExecutions = totalSuccessful + totalFailed;
+  const successRate = totalExecutions > 0 ? (totalSuccessful / totalExecutions) * 100 : 0;
+  
+  // Format execution time data
+  const executionTimeData = executionTimeMetric.Datapoints?.map(point => ({
+    timestamp: point.Timestamp?.toISOString(),
+    average: point.Average,
+    minimum: point.Minimum,
+    maximum: point.Maximum
+  })) || [];
+  
+  // Get pipeline executions for the period
+  const codepipeline = codePipelineManager.getCodePipeline();
+  const pipelineExecutions = await codepipeline.listPipelineExecutions({
+    pipelineName,
+    maxResults: 20 // Limit to recent executions
+  }).promise();
+  
+  // Calculate average stage duration
+  const stageMetrics: Record<string, { count: number, totalDuration: number }> = {};
+  
+  // We would need to fetch each execution detail to get accurate stage timing
+  // This is a simplified version using the available data
+  for (const execution of pipelineExecutions.pipelineExecutionSummaries || []) {
+    if (execution.startTime && execution.status === 'Succeeded') {
+      const executionDetail = await codepipeline.getPipelineExecution({
+        pipelineName,
+        pipelineExecutionId: execution.pipelineExecutionId || ''
+      }).promise();
+      
+      // Get pipeline state to analyze stage timing
+      const pipelineState = await codepipeline.getPipelineState({
+        name: pipelineName
+      }).promise();
+      
+      // Process stage information
+      for (const stage of pipelineState.stageStates || []) {
+        if (stage.latestExecution?.status === 'Succeeded' && 
+            stage.stageName && 
+            stage.actionStates && 
+            stage.actionStates.length > 0) {
+          
+          // Find earliest and latest action timestamps
+          let earliestTime: Date | undefined;
+          let latestTime: Date | undefined;
+          
+          for (const action of stage.actionStates) {
+            if (action.latestExecution?.lastStatusChange) {
+              const timestamp = new Date(action.latestExecution.lastStatusChange);
+              
+              if (!earliestTime || timestamp < earliestTime) {
+                earliestTime = timestamp;
+              }
+              
+              if (!latestTime || timestamp > latestTime) {
+                latestTime = timestamp;
+              }
+            }
+          }
+          
+          // Calculate duration if we have both timestamps
+          if (earliestTime && latestTime) {
+            const stageName = stage.stageName;
+            const duration = (latestTime.getTime() - earliestTime.getTime()) / 1000; // in seconds
+            
+            if (!stageMetrics[stageName]) {
+              stageMetrics[stageName] = { count: 0, totalDuration: 0 };
+            }
+            
+            stageMetrics[stageName].count += 1;
+            stageMetrics[stageName].totalDuration += duration;
+          }
+        }
+      }
+    }
+  }
+  
+  // Calculate average duration for each stage
+  const stageDurations = Object.entries(stageMetrics).map(([stageName, metrics]) => ({
+    stageName,
+    averageDuration: metrics.count > 0 ? metrics.totalDuration / metrics.count : 0,
+    executionCount: metrics.count
+  }));
+  
+  // Prepare the metrics result
+  const metrics = {
+    pipelineName,
+    timeRange: {
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString(),
+      periodSeconds: period
+    },
+    executionStats: {
+      totalExecutions,
+      successfulExecutions: totalSuccessful,
+      failedExecutions: totalFailed,
+      successRate: successRate.toFixed(2) + '%'
+    },
+    executionTime: {
+      average: executionTimeMetric.Datapoints?.length ? 
+        executionTimeMetric.Datapoints.reduce((sum, point) => sum + (point.Average || 0), 0) / executionTimeMetric.Datapoints.length : 
+        0,
+      minimum: Math.min(...(executionTimeMetric.Datapoints?.map(point => point.Minimum || 0) || [0])),
+      maximum: Math.max(...(executionTimeMetric.Datapoints?.map(point => point.Maximum || 0) || [0])),
+      dataPoints: executionTimeData
+    },
+    stagePerformance: stageDurations
+  };
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(metrics, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/tools/get_pipeline_state.ts
+================
+import { CodePipelineManager } from "../types.js";
+import AWS from 'aws-sdk';
+
+export const getPipelineStateSchema = {
+  name: "get_pipeline_state",
+  description: "Get the state of a specific pipeline",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pipelineName: { 
+        type: "string",
+        description: "Name of the pipeline"
+      }
+    },
+    required: ["pipelineName"],
+  },
+} as const;
+
+export async function getPipelineState(codePipelineManager: CodePipelineManager, input: { pipelineName: string }) {
+  const { pipelineName } = input;
+  const codepipeline = codePipelineManager.getCodePipeline();
+  
+  const response = await codepipeline.getPipelineState({ name: pipelineName }).promise();
+  
+  // Convert AWS.CodePipeline.StageState[] to our StageState[]
+  const stageStates = response.stageStates?.map((stage: AWS.CodePipeline.StageState) => {
+    // Convert TransitionState
+    const inboundTransitionState = stage.inboundTransitionState ? {
+      enabled: stage.inboundTransitionState.enabled === undefined ? false : stage.inboundTransitionState.enabled,
+      lastChangedBy: stage.inboundTransitionState.lastChangedBy,
+      lastChangedAt: stage.inboundTransitionState.lastChangedAt,
+      disabledReason: stage.inboundTransitionState.disabledReason
+    } : undefined;
+    
+    // Convert StageExecution
+    const latestExecution = stage.latestExecution ? {
+      pipelineExecutionId: stage.latestExecution.pipelineExecutionId || '',
+      status: stage.latestExecution.status || ''
+    } : undefined;
+    
+    // Convert ActionStates
+    const actionStates = (stage.actionStates || []).map((action: AWS.CodePipeline.ActionState) => {
+      // Convert ActionExecution
+      const latestExecution = action.latestExecution ? {
+        status: action.latestExecution.status || '',
+        summary: action.latestExecution.summary,
+        lastStatusChange: action.latestExecution.lastStatusChange || new Date().toISOString(),
+        token: action.latestExecution.token,
+        externalExecutionId: action.latestExecution.externalExecutionId,
+        externalExecutionUrl: action.latestExecution.externalExecutionUrl,
+        errorDetails: action.latestExecution.errorDetails ? {
+          code: action.latestExecution.errorDetails.code || '',
+          message: action.latestExecution.errorDetails.message || ''
+        } : undefined
+      } : undefined;
+      
+      // Convert ActionRevision
+      const currentRevision = action.currentRevision ? {
+        revisionId: action.currentRevision.revisionId || '',
+        revisionChangeId: action.currentRevision.revisionChangeId || '',
+        created: action.currentRevision.created || new Date().toISOString()
+      } : undefined;
+      
+      return {
+        actionName: action.actionName || '',
+        currentRevision,
+        latestExecution,
+        entityUrl: action.entityUrl
+      };
+    });
+    
+    return {
+      stageName: stage.stageName || '',
+      inboundTransitionState,
+      actionStates,
+      latestExecution
+    };
+  }) || [];
+  
+  const pipelineState = {
+    pipelineName: response.pipelineName || '',
+    pipelineVersion: response.pipelineVersion || 0,
+    stageStates: stageStates,
+    created: response.created?.toISOString() || '',
+    updated: response.updated?.toISOString() || ''
+  };
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ pipelineState }, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/tools/list_pipeline_executions.ts
+================
+import { CodePipelineManager } from "../types.js";
+import AWS from 'aws-sdk';
+
+export const listPipelineExecutionsSchema = {
+  name: "list_pipeline_executions",
+  description: "List executions for a specific pipeline",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pipelineName: { 
+        type: "string",
+        description: "Name of the pipeline"
+      }
+    },
+    required: ["pipelineName"],
+  },
+} as const;
+
+export async function listPipelineExecutions(codePipelineManager: CodePipelineManager, input: { pipelineName: string }) {
+  const { pipelineName } = input;
+  const codepipeline = codePipelineManager.getCodePipeline();
+  
+  const response = await codepipeline.listPipelineExecutions({ 
+    pipelineName 
+  }).promise();
+  
+  const executions = response.pipelineExecutionSummaries?.map((execution: AWS.CodePipeline.PipelineExecutionSummary) => ({
+    pipelineExecutionId: execution.pipelineExecutionId || '',
+    status: execution.status || '',
+    startTime: execution.startTime?.toISOString() || '',
+    lastUpdateTime: execution.lastUpdateTime?.toISOString() || '',
+    sourceRevisions: execution.sourceRevisions?.map((revision: AWS.CodePipeline.SourceRevision) => ({
+      name: revision.actionName || '',
+      revisionId: revision.revisionId || '',
+      revisionUrl: revision.revisionUrl || '',
+      revisionSummary: revision.revisionSummary || ''
+    })) || []
+  })) || [];
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ executions }, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/tools/list_pipelines.ts
+================
+import { CodePipelineManager } from "../types.js";
+
+export const listPipelinesSchema = {
+  name: "list_pipelines",
+  description: "List all CodePipeline pipelines",
+  inputSchema: {
+    type: "object",
+    properties: {},
+    required: [],
+  },
+} as const;
+
+export async function listPipelines(codePipelineManager: CodePipelineManager) {
+  const codepipeline = codePipelineManager.getCodePipeline();
+  const response = await codepipeline.listPipelines().promise();
+  
+  const pipelines = response.pipelines?.map((pipeline: AWS.CodePipeline.PipelineSummary) => ({
+    name: pipeline.name || '',
+    version: pipeline.version || 0,
+    created: pipeline.created?.toISOString() || '',
+    updated: pipeline.updated?.toISOString() || ''
+  })) || [];
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ pipelines }, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/tools/retry_stage.ts
+================
+import { CodePipelineManager } from "../types.js";
+
+export const retryStageSchema = {
+  name: "retry_stage",
+  description: "Retry a failed stage",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pipelineName: { 
+        type: "string",
+        description: "Name of the pipeline"
+      },
+      stageName: { 
+        type: "string",
+        description: "Name of the stage"
+      },
+      pipelineExecutionId: { 
+        type: "string",
+        description: "Execution ID"
+      }
+    },
+    required: ["pipelineName", "stageName", "pipelineExecutionId"],
+  },
+} as const;
+
+export async function retryStage(
+  codePipelineManager: CodePipelineManager, 
+  input: {
+    pipelineName: string;
+    stageName: string;
+    pipelineExecutionId: string;
+  }
+) {
+  const { pipelineName, stageName, pipelineExecutionId } = input;
+  const codepipeline = codePipelineManager.getCodePipeline();
+  
+  await codepipeline.retryStageExecution({
+    pipelineName,
+    stageName,
+    pipelineExecutionId,
+    retryMode: 'FAILED_ACTIONS'
+  }).promise();
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ 
+          message: "Stage retry initiated successfully" 
+        }, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/tools/stop_pipeline_execution.ts
+================
+import { CodePipelineManager } from "../types.js";
+
+export const stopPipelineExecutionSchema = {
+  name: "stop_pipeline_execution",
+  description: "Stop a pipeline execution",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pipelineName: { 
+        type: "string",
+        description: "Name of the pipeline"
+      },
+      executionId: { 
+        type: "string",
+        description: "Execution ID"
+      },
+      reason: { 
+        type: "string",
+        description: "Optional reason for stopping"
+      }
+    },
+    required: ["pipelineName", "executionId"],
+  },
+} as const;
+
+export async function stopPipelineExecution(
+  codePipelineManager: CodePipelineManager, 
+  input: {
+    pipelineName: string;
+    executionId: string;
+    reason?: string;
+  }
+) {
+  const { pipelineName, executionId, reason } = input;
+  const codepipeline = codePipelineManager.getCodePipeline();
+  
+  await codepipeline.stopPipelineExecution({
+    pipelineName,
+    pipelineExecutionId: executionId,
+    reason: reason || 'Stopped by user',
+    abandon: false
+  }).promise();
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ 
+          message: "Pipeline execution stopped successfully" 
+        }, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/tools/tag_pipeline_resource.ts
+================
+import { CodePipelineManager } from "../types.js";
+
+export const tagPipelineResourceSchema = {
+  name: "tag_pipeline_resource",
+  description: "Add or update tags for a pipeline resource",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pipelineName: { 
+        type: "string",
+        description: "Name of the pipeline"
+      },
+      tags: {
+        type: "array",
+        description: "List of tags to add or update",
+        items: {
+          type: "object",
+          properties: {
+            key: {
+              type: "string",
+              description: "Tag key"
+            },
+            value: {
+              type: "string",
+              description: "Tag value"
+            }
+          },
+          required: ["key", "value"]
+        }
+      }
+    },
+    required: ["pipelineName", "tags"],
+  },
+} as const;
+
+export async function tagPipelineResource(
+  codePipelineManager: CodePipelineManager, 
+  input: {
+    pipelineName: string;
+    tags: Array<{ key: string; value: string }>;
+  }
+) {
+  const { pipelineName, tags } = input;
+  const codepipeline = codePipelineManager.getCodePipeline();
+  
+  // First, get the pipeline ARN
+  const pipelineResponse = await codepipeline.getPipeline({ name: pipelineName }).promise();
+  const resourceArn = pipelineResponse.metadata?.pipelineArn;
+  
+  if (!resourceArn) {
+    throw new Error(`Could not find ARN for pipeline: ${pipelineName}`);
+  }
+  
+  // Tag the resource
+  await codepipeline.tagResource({
+    resourceArn,
+    tags: tags.map(tag => ({
+      key: tag.key,
+      value: tag.value
+    }))
+  }).promise();
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ 
+          message: "Pipeline resource tagged successfully",
+          resourceArn,
+          tags
+        }, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/tools/trigger_pipeline.ts
+================
+import { CodePipelineManager } from "../types.js";
+
+export const triggerPipelineSchema = {
+  name: "trigger_pipeline",
+  description: "Trigger a pipeline execution",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pipelineName: { 
+        type: "string",
+        description: "Name of the pipeline"
+      }
+    },
+    required: ["pipelineName"],
+  },
+} as const;
+
+export async function triggerPipeline(
+  codePipelineManager: CodePipelineManager, 
+  input: {
+    pipelineName: string;
+  }
+) {
+  const { pipelineName } = input;
+  const codepipeline = codePipelineManager.getCodePipeline();
+  
+  const response = await codepipeline.startPipelineExecution({
+    name: pipelineName
+  }).promise();
+  
+  const executionId = response.pipelineExecutionId || '';
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ 
+          message: "Pipeline triggered successfully", 
+          executionId 
+        }, null, 2),
+      },
+    ],
+  };
+}
+
+================
+File: src/types/codepipeline.ts
+================
+export interface PipelineSummary {
+  name: string;
+  version: number;
+  created: string;
+  updated: string;
+}
+
+export interface StageExecution {
+  pipelineExecutionId: string;
+  status: string;
+}
+
+export interface ActionRevision {
+  revisionId: string;
+  revisionChangeId: string;
+  created: string | Date;
+}
+
+export interface ActionExecutionError {
+  code: string;
+  message: string;
+}
+
+export interface ActionExecution {
+  status: string;
+  summary?: string;
+  lastStatusChange: string | Date;
+  token?: string;
+  externalExecutionId?: string;
+  externalExecutionUrl?: string;
+  errorDetails?: ActionExecutionError;
+}
+
+export interface ActionState {
+  actionName: string;
+  currentRevision?: ActionRevision;
+  latestExecution?: ActionExecution;
+  entityUrl?: string;
+}
+
+export interface TransitionState {
+  enabled: boolean;
+  lastChangedBy?: string;
+  lastChangedAt?: string | Date;
+  disabledReason?: string;
+}
+
+export interface StageExecution {
+  pipelineExecutionId: string;
+  status: string;
+  startTime?: Date;
+  lastUpdateTime?: Date;
+}
+
+export interface StageState {
+  stageName: string;
+  inboundTransitionState?: TransitionState;
+  actionStates: ActionState[];
+  latestExecution?: StageExecution;
+}
+
+export interface PipelineState {
+  pipelineName: string;
+  pipelineVersion: number;
+  stageStates: StageState[];
+  created: string;
+  updated: string;
+}
+
+export interface PipelineExecution {
+  pipelineExecutionId: string;
+  status: string;
+  artifactRevisions?: {
+    name: string;
+    revisionId: string;
+    revisionChangeIdentifier: string;
+    revisionSummary: string;
+    created: string;
+    revisionUrl: string;
+  }[];
+}
+
+export interface ApprovalRequest {
+  pipelineName: string;
+  stageName: string;
+  actionName: string;
+  token: string;
+}
+
+export interface RetryStageRequest {
+  pipelineName: string;
+  stageName: string;
+  pipelineExecutionId: string;
+}
+
+export interface TriggerPipelineRequest {
+  pipelineName: string;
+}
+
+================
+File: src/types/modelcontextprotocol-sdk.d.ts
+================
+declare module '@modelcontextprotocol/sdk' {
+  export interface ParamDefinition {
+    type: string;
+    description: string;
+    required?: boolean;
+    enum?: string[];
+    properties?: Record<string, ParamDefinition>;
+    items?: ParamDefinition;
+  }
+
+  export interface ToolDefinition {
+    name: string;
+    description: string;
+    parameters: Record<string, ParamDefinition | string>;
+  }
+
+  export interface Tool {
+    name: string;
+    parameters: Record<string, any>;
+  }
+
+  export interface ErrorDetail {
+    message: string;
+    code: string;
+    details?: any;
+  }
+
+  export interface SuccessResult {
+    result: any;
+  }
+
+  export interface ErrorResult {
+    error: ErrorDetail;
+  }
+
+  export interface MCPServerConfig {
+    serverName: string;
+    serverVersion: string;
+    serverDescription: string;
+    toolDefinitions: ToolDefinition[];
+  }
+
+  export class MCPRouter {
+    constructor(server: MCPServer);
+    router: any;
+  }
+
+  export class MCPServer {
+    constructor(config: MCPServerConfig);
+    protected handleTool(tool: Tool): Promise<SuccessResult | ErrorResult>;
+  }
+}
+
+================
+File: src/utils/env.ts
+================
+import dotenv from 'dotenv';
+import { resolve } from 'path';
+import { existsSync } from 'fs';
+
+/**
+ * Load environment variables from .env file
+ */
+export function loadEnv(): void {
+  const envPath = resolve(process.cwd(), '.env');
+  
+  if (existsSync(envPath)) {
+    console.log(`Loading environment variables from ${envPath}`);
+    const result = dotenv.config({ path: envPath });
+    
+    if (result.error) {
+      console.error('Error loading .env file:', result.error);
+    } else {
+      console.log('Environment variables loaded successfully');
+    }
+  } else {
+    console.warn(`No .env file found at ${envPath}`);
+  }
+}
+
+/**
+ * Get an environment variable with a fallback value
+ */
+export function getEnv(key: string, defaultValue?: string): string {
+  return process.env[key] || defaultValue || '';
+}
+
+================
+File: src/index.ts
+================
+#!/usr/bin/env node
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { loadEnv, getEnv } from './utils/env.js';
+import { CodePipelineManager } from "./types.js";
+import { serverConfig } from "./config/server-config.js";
+
+// Import tool schemas and handlers
+import { 
+  listPipelines, 
+  listPipelinesSchema 
+} from "./tools/list_pipelines.js";
+
+import { 
+  getPipelineState, 
+  getPipelineStateSchema 
+} from "./tools/get_pipeline_state.js";
+
+import { 
+  listPipelineExecutions, 
+  listPipelineExecutionsSchema 
+} from "./tools/list_pipeline_executions.js";
+
+import { 
+  approveAction, 
+  approveActionSchema 
+} from "./tools/approve_action.js";
+
+import { 
+  retryStage,
+  retryStageSchema 
+} from "./tools/retry_stage.js";
+
+import { 
+  triggerPipeline, 
+  triggerPipelineSchema 
+} from "./tools/trigger_pipeline.js";
+
+import { 
+  getPipelineExecutionLogs, 
+  getPipelineExecutionLogsSchema 
+} from "./tools/get_pipeline_execution_logs.js";
+
+import { 
+  stopPipelineExecution, 
+  stopPipelineExecutionSchema 
+} from "./tools/stop_pipeline_execution.js";
+
+// Import new tool schemas and handlers
+import {
+  getPipelineDetails,
+  getPipelineDetailsSchema
+} from "./tools/get_pipeline_details.js";
+
+import {
+  tagPipelineResource,
+  tagPipelineResourceSchema
+} from "./tools/tag_pipeline_resource.js";
+
+import {
+  createPipelineWebhook,
+  createPipelineWebhookSchema
+} from "./tools/create_pipeline_webhook.js";
+
+import {
+  getPipelineMetrics,
+  getPipelineMetricsSchema
+} from "./tools/get_pipeline_metrics.js";
+
+import {
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  ErrorCode,
+  McpError,
+} from "@modelcontextprotocol/sdk/types.js";
+
+// Load environment variables
+loadEnv();
+
+// Log configuration for debugging
+console.log('----- AWS CodePipeline MCP Server Configuration -----');
+console.log('PORT:', getEnv('PORT', '3000'));
+console.log('AWS_REGION:', getEnv('AWS_REGION'));
+console.log('AWS_ACCESS_KEY_ID:', getEnv('AWS_ACCESS_KEY_ID') ? '***' : 'undefined');
+console.log('AWS_SECRET_ACCESS_KEY:', getEnv('AWS_SECRET_ACCESS_KEY') ? '***' : 'undefined');
+console.log('-----------------------------------------------------');
+
+// Initialize CodePipeline manager
+const codePipelineManager = new CodePipelineManager();
+
+// Create server instance
+const server = new Server(
+  {
+    name: serverConfig.name,
+    version: serverConfig.version,
+  },
+  {
+    capabilities: {
+      tools: { listChanged: true },
+      resources: { listChanged: false },
+      prompts: { listChanged: false }
+    },
+    instructions: "AWS CodePipeline MCP Server for interacting with AWS CodePipeline services"
+  }
+);
+
+// Set up tools handler
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
+      listPipelinesSchema,
+      getPipelineStateSchema,
+      listPipelineExecutionsSchema,
+      approveActionSchema,
+      retryStageSchema,
+      triggerPipelineSchema,
+      getPipelineExecutionLogsSchema,
+      stopPipelineExecutionSchema,
+      // Add new tool schemas
+      getPipelineDetailsSchema,
+      tagPipelineResourceSchema,
+      createPipelineWebhookSchema,
+      getPipelineMetricsSchema,
+    ],
+  };
+});
+
+// Set up tool call handler
+server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name: string; _meta?: any; arguments?: Record<string, any> }; method: string }) => {
+  try {
+    const { name, arguments: input = {} } = request.params;
+
+    switch (name) {
+      case "list_pipelines": {
+        return await listPipelines(codePipelineManager);
+      }
+
+      case "get_pipeline_state": {
+        return await getPipelineState(codePipelineManager, input as { pipelineName: string });
+      }
+
+      case "list_pipeline_executions": {
+        return await listPipelineExecutions(codePipelineManager, input as { pipelineName: string });
+      }
+
+      case "approve_action": {
+        return await approveAction(codePipelineManager, input as {
+          pipelineName: string;
+          stageName: string;
+          actionName: string;
+          token: string;
+          approved: boolean;
+          comments?: string;
+        });
+      }
+
+      case "retry_stage": {
+        return await retryStage(codePipelineManager, input as {
+          pipelineName: string;
+          stageName: string;
+          pipelineExecutionId: string;
+        });
+      }
+
+      case "trigger_pipeline": {
+        return await triggerPipeline(codePipelineManager, input as {
+          pipelineName: string;
+        });
+      }
+
+      case "get_pipeline_execution_logs": {
+        return await getPipelineExecutionLogs(codePipelineManager, input as {
+          pipelineName: string;
+          executionId: string;
+        });
+      }
+
+      case "stop_pipeline_execution": {
+        return await stopPipelineExecution(codePipelineManager, input as {
+          pipelineName: string;
+          executionId: string;
+          reason?: string;
+        });
+      }
+
+      // Add handlers for new tools
+      case "get_pipeline_details": {
+        return await getPipelineDetails(codePipelineManager, input as {
+          pipelineName: string;
+        });
+      }
+
+      case "tag_pipeline_resource": {
+        return await tagPipelineResource(codePipelineManager, input as {
+          pipelineName: string;
+          tags: Array<{ key: string; value: string }>;
+        });
+      }
+
+      case "create_pipeline_webhook": {
+        return await createPipelineWebhook(codePipelineManager, input as {
+          pipelineName: string;
+          webhookName: string;
+          targetAction: string;
+          authentication: string;
+          authenticationConfiguration?: {
+            SecretToken?: string;
+            AllowedIpRange?: string;
+          };
+          filters?: Array<{
+            jsonPath: string;
+            matchEquals?: string;
+          }>;
+        });
+      }
+
+      case "get_pipeline_metrics": {
+        return await getPipelineMetrics(codePipelineManager, input as {
+          pipelineName: string;
+          period?: number;
+          startTime?: string;
+          endTime?: string;
+        });
+      }
+
+      default:
+        throw new McpError(ErrorCode.InvalidRequest, `Unknown tool: ${name}`);
+    }
+  } catch (error) {
+    if (error instanceof McpError) throw error;
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Tool execution failed: ${error}`
+    );
+  }
+});
+
+// Resources handlers (empty for now, can be implemented if needed)
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [] }));
+server.setRequestHandler(ReadResourceRequestSchema, async () => { throw new McpError(ErrorCode.InvalidRequest, "No resources available"); });
+
+// Create transport and start server
+const transport = new StdioServerTransport();
+
+// Connect the server to the transport
+server.connect(transport);
+
+// Import and initialize the HTTP server
+import express from 'express';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import codePipelineRoutes from './routes/codepipeline.routes.js';
+
+const app = express();
+const PORT = parseInt(getEnv('PORT', '3000'));
+
+// Configure middleware
+app.use(cors());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// Configure routes
+app.use('/api', codePipelineRoutes);
+
+// Health check route
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+// Start the HTTP server
+app.listen(PORT, () => {
+  console.log(`HTTP server listening on port ${PORT}`);
+});
+
+["SIGINT", "SIGTERM"].forEach((signal) => {
+  process.on(signal, async () => {
+      console.log(`Received ${signal}, shutting down...`);
+      await server.close();
+      process.exit(0);
+  });
+});
+
+// Log server start
+console.log("AWS CodePipeline MCP Server started successfully");
+console.log(`Server running with AWS region: ${getEnv('AWS_REGION')}`);
+
+================
+File: src/mcp-server.ts
+================
+import express, { Request, Response } from 'express';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import { Server as BaseMCPServer } from "@modelcontextprotocol/sdk/server/index.js";
+import codePipelineRoutes from './routes/codepipeline.routes';
+
+// Define types that match the SDK expectations
+interface Tool {
+  name: string;
+  parameters: any;
+}
+
+interface ParamDefinition {
+  type: string;
+  description: string;
+  required?: boolean;
+}
+
+interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, ParamDefinition>;
+}
+
+interface SuccessResult {
+  status: 'success';
+  result: any;
+}
+
+interface ErrorResult {
+  status: 'error';
+  error: {
+    code: string;
+    message: string;
+  };
+}
+
+// Define the MCPRouter class since it's not directly exported
+class MCPRouter {
+  router: express.Router;
+  
+  constructor(server: any) {
+    this.router = express.Router();
+    this.setupRoutes(server);
+  }
+  
+  private setupRoutes(server: any): void {
+    this.router.post('/mcp', (req, res) => {
+      // Handle MCP requests
+      res.json({ status: 'success' });
+    });
+  }
+}
+
+// Define the tool definitions following MCP standard
+const toolDefinitions: ToolDefinition[] = [
+  {
+    name: 'listPipelines',
+    description: 'List all CodePipeline pipelines',
+    parameters: {}
+  },
+  {
+    name: 'getPipelineState',
+    description: 'Get the state of a specific pipeline',
+    parameters: {
+      pipelineName: {
+        type: 'string',
+        description: 'Name of the pipeline'
+      } as ParamDefinition
+    }
+  },
+  {
+    name: 'listPipelineExecutions',
+    description: 'List executions for a specific pipeline',
+    parameters: {
+      pipelineName: {
+        type: 'string',
+        description: 'Name of the pipeline'
+      } as ParamDefinition
+    }
+  },
+  {
+    name: 'approveAction',
+    description: 'Approve or reject a manual approval action',
+    parameters: {
+      pipelineName: {
+        type: 'string',
+        description: 'Name of the pipeline'
+      } as ParamDefinition,
+      stageName: {
+        type: 'string',
+        description: 'Name of the stage'
+      } as ParamDefinition,
+      actionName: {
+        type: 'string',
+        description: 'Name of the action'
+      } as ParamDefinition,
+      token: {
+        type: 'string',
+        description: 'Approval token'
+      } as ParamDefinition,
+      approved: {
+        type: 'boolean',
+        description: 'Boolean indicating approval or rejection'
+      } as ParamDefinition,
+      comments: {
+        type: 'string',
+        description: 'Optional comments',
+        required: false
+      } as ParamDefinition
+    }
+  },
+  {
+    name: 'retryStage',
+    description: 'Retry a failed stage',
+    parameters: {
+      pipelineName: {
+        type: 'string',
+        description: 'Name of the pipeline'
+      } as ParamDefinition,
+      stageName: {
+        type: 'string',
+        description: 'Name of the stage'
+      } as ParamDefinition,
+      pipelineExecutionId: {
+        type: 'string',
+        description: 'Execution ID'
+      } as ParamDefinition
+    }
+  },
+  {
+    name: 'triggerPipeline',
+    description: 'Trigger a pipeline execution',
+    parameters: {
+      pipelineName: {
+        type: 'string',
+        description: 'Name of the pipeline'
+      } as ParamDefinition
+    }
+  },
+  {
+    name: 'getPipelineExecutionLogs',
+    description: 'Get logs for a pipeline execution',
+    parameters: {
+      pipelineName: {
+        type: 'string',
+        description: 'Name of the pipeline'
+      } as ParamDefinition,
+      executionId: {
+        type: 'string',
+        description: 'Execution ID'
+      } as ParamDefinition
+    }
+  },
+  {
+    name: 'stopPipelineExecution',
+    description: 'Stop a pipeline execution',
+    parameters: {
+      pipelineName: {
+        type: 'string',
+        description: 'Name of the pipeline'
+      } as ParamDefinition,
+      executionId: {
+        type: 'string',
+        description: 'Execution ID'
+      } as ParamDefinition,
+      reason: {
+        type: 'string',
+        description: 'Optional reason for stopping',
+        required: false
+      } as ParamDefinition
+    }
+  }
+];
+
+export class MCPServer extends BaseMCPServer {
+  private app: express.Application;
+  private port: number;
+  private mcpRouter: MCPRouter;
+
+  constructor(port: number = 3000) {
+    // Initialize the MCP server with tool definitions
+    super({
+      name: 'AWS CodePipeline MCP Server',
+      version: '1.0.0',
+      description: 'MCP server for AWS CodePipeline integration',
+      tools: toolDefinitions
+    });
+
+    this.app = express();
+    this.port = port;
+    this.mcpRouter = new MCPRouter(this);
+    this.configureMiddleware();
+    this.configureRoutes();
+  }
+
+  private configureMiddleware(): void {
+    this.app.use(cors());
+    this.app.use(bodyParser.json());
+    this.app.use(bodyParser.urlencoded({ extended: true }));
+  }
+
+  private configureRoutes(): void {
+    // Mount the MCP routes
+    this.app.use('/', this.mcpRouter.router);
+
+    // API routes
+    this.app.use('/api', codePipelineRoutes);
+
+    // Health check route
+    this.app.get('/health', (req: Request, res: Response) => {
+      res.status(200).json({ status: 'ok' });
+    });
+  }
+
+  // Override the MCP handleTool method to implement tool execution
+  protected async handleTool(tool: Tool): Promise<SuccessResult | ErrorResult> {
+    try {
+      // Import the controller directly
+      const { CodePipelineController } = require('./controllers/codepipeline.controller');
+      const controller = new CodePipelineController();
+      
+      // Process tool based on name
+      switch (tool.name) {
+        case 'listPipelines': {
+          const result = await controller.listPipelines();
+          return { status: 'success', result };
+        }
+        
+        case 'getPipelineState': {
+          const params = tool.parameters as { pipelineName: string };
+          const result = await controller.getPipelineState(params.pipelineName);
+          return { status: 'success', result };
+        }
+        
+        case 'listPipelineExecutions': {
+          const params = tool.parameters as { pipelineName: string };
+          const result = await controller.listPipelineExecutions(params.pipelineName);
+          return { status: 'success', result };
+        }
+        
+        case 'approveAction': {
+          const params = tool.parameters as { 
+            pipelineName: string; 
+            stageName: string; 
+            actionName: string; 
+            token: string; 
+            approved: boolean; 
+            comments?: string 
+          };
+          const result = await controller.approveAction(
+            params.pipelineName, 
+            params.stageName, 
+            params.actionName, 
+            params.token, 
+            params.approved, 
+            params.comments
+          );
+          return { status: 'success', result };
+        }
+        
+        case 'retryStage': {
+          const params = tool.parameters as { 
+            pipelineName: string; 
+            stageName: string; 
+            pipelineExecutionId: string 
+          };
+          const result = await controller.retryStage(
+            params.pipelineName, 
+            params.stageName, 
+            params.pipelineExecutionId
+          );
+          return { status: 'success', result };
+        }
+        
+        case 'triggerPipeline': {
+          const params = tool.parameters as { pipelineName: string };
+          const result = await controller.triggerPipeline(params.pipelineName);
+          return { status: 'success', result };
+        }
+        
+        case 'getPipelineExecutionLogs': {
+          const params = tool.parameters as { pipelineName: string; executionId: string };
+          const result = await controller.getPipelineExecutionLogs(
+            params.pipelineName, 
+            params.executionId
+          );
+          return { status: 'success', result };
+        }
+        
+        case 'stopPipelineExecution': {
+          const params = tool.parameters as { 
+            pipelineName: string; 
+            executionId: string; 
+            reason?: string 
+          };
+          const result = await controller.stopPipelineExecution(
+            params.pipelineName, 
+            params.executionId, 
+            params.reason || 'Stopped by user'
+          );
+          return { status: 'success', result };
+        }
+        
+        default:
+          return {
+            status: 'error',
+            error: {
+              code: 'UNKNOWN_TOOL',
+              message: `Unknown tool: ${tool.name}`
+            }
+          };
+      }
+    } catch (error: any) {
+      console.error('Error handling tool:', error);
+      return {
+        status: 'error',
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error.message || 'Internal server error'
+        }
+      };
+    }
+  }
+
+  public start(): void {
+    this.app.listen(this.port, () => {
+      console.log(`MCP server running on port ${this.port}`);
+      console.log(`Server description available at http://localhost:${this.port}/`);
+      console.log(`Health check available at http://localhost:${this.port}/health`);
+      console.log(`MCP tools endpoint available at http://localhost:${this.port}/tools`);
+    });
+  }
+}
+
+================
+File: src/types.ts
+================
+import AWS from 'aws-sdk';
+import { getEnv } from './utils/env.js';
+
+export class CodePipelineManager {
+  private codepipeline: AWS.CodePipeline;
+
+  constructor() {
+    // Get AWS configuration from environment variables
+    const region = getEnv('AWS_REGION', 'us-west-2'); // Default to us-west-2 if not provided
+    const accessKeyId = getEnv('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = getEnv('AWS_SECRET_ACCESS_KEY');
+    
+    // Configure AWS SDK
+    const awsConfig: AWS.ConfigurationOptions = { region };
+    
+    // Add credentials if provided
+    if (accessKeyId && secretAccessKey) {
+      awsConfig.credentials = new AWS.Credentials({
+        accessKeyId,
+        secretAccessKey
+      });
+    }
+    
+    // Update AWS SDK configuration
+    AWS.config.update(awsConfig);
+    
+    console.log(`AWS CodePipeline manager initialized with region: ${region}`);
+    this.codepipeline = new AWS.CodePipeline(awsConfig);
+  }
+
+  getCodePipeline(): AWS.CodePipeline {
+    return this.codepipeline;
+  }
+}
+
+// Types for the API responses
+export interface PipelineSummary {
+  name: string;
+  version: number;
+  created: string;
+  updated: string;
+}
+
+export interface TransitionState {
+  enabled: boolean;
+  lastChangedBy?: string;
+  lastChangedAt?: Date | string;
+  disabledReason?: string;
+}
+
+export interface StageExecution {
+  pipelineExecutionId: string;
+  status: string;
+}
+
+export interface ErrorDetails {
+  code: string;
+  message: string;
+}
+
+export interface ActionExecution {
+  status: string;
+  summary?: string;
+  lastStatusChange: Date | string;
+  token?: string;
+  externalExecutionId?: string;
+  externalExecutionUrl?: string;
+  errorDetails?: ErrorDetails;
+}
+
+export interface ActionRevision {
+  revisionId: string;
+  revisionChangeId: string;
+  created: Date | string;
+}
+
+export interface ActionState {
+  actionName: string;
+  currentRevision?: ActionRevision;
+  latestExecution?: ActionExecution;
+  entityUrl?: string;
+}
+
+export interface StageState {
+  stageName: string;
+  inboundTransitionState?: TransitionState;
+  actionStates: ActionState[];
+  latestExecution?: StageExecution;
+}
+
+export interface PipelineState {
+  pipelineName: string;
+  pipelineVersion: number;
+  stageStates: StageState[];
+  created: string;
+  updated: string;
+}
+
+export interface ArtifactRevision {
+  name: string;
+  revisionId: string;
+  revisionChangeIdentifier: string;
+  revisionSummary: string;
+  created: string;
+  revisionUrl: string;
+}
+
+export interface PipelineExecution {
+  pipelineExecutionId: string;
+  status: string;
+  artifactRevisions: ArtifactRevision[];
+}
+
+export interface ApprovalRequest {
+  pipelineName: string;
+  stageName: string;
+  actionName: string;
+  token: string;
+}
+
+export interface RetryStageRequest {
+  pipelineName: string;
+  stageName: string;
+  pipelineExecutionId: string;
+}
+
+export interface TriggerPipelineRequest {
+  pipelineName: string;
+}
+
+================
+File: .env.example
+================
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_access_key_id
+AWS_SECRET_ACCESS_KEY=your_secret_access_key
+PORT=3000
+
+================
+File: .gitignore
+================
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Environment variables and secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+.aws/
+aws-credentials.json
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Misc
+.cache/
+.npm
+.eslintcache
+.stylelintcache
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# AWS specific
+.aws-sam/
+samconfig.toml
+cloudformation-template-*.json
+
+# MCP specific
+mcp_config.json
+
+================
+File: ARCHITECTURE.md
+================
+# MCP Server for AWS CodePipeline - Beginner's Guide
+
+## 1. Project Overview
+
+### What is an MCP Server?
+
+A Model Context Protocol (MCP) server creates a bridge between Cascade (the AI assistant in Windsurf IDE) and external services like AWS. Think of it as a translator that converts natural language requests into API calls to specific services.
+
+**Example**: When you ask Cascade "List all my CodePipeline pipelines," the MCP server translates this into an AWS API call and returns the results.
+
+### Goals
+- Create a Model Context Protocol (MCP) server that allows Cascade to interact with AWS CodePipeline
+- Enable natural language control of pipeline operations through Windsurf
+- Provide a secure and efficient bridge between the Windsurf IDE and AWS services
+
+### What You'll Build
+- A server that can list and manage AWS CodePipeline resources
+- Functionality to view pipeline states, executions, and details
+- Capability to trigger pipeline executions, approvals, and other operations
+- Proper authentication and error handling mechanisms
+
+### Key Technologies
+- **TypeScript**: Used for type-safe development (don't worry if you're new to it!)
+- **Node.js**: Runtime environment for JavaScript
+- **Express**: Simple HTTP server framework
+- **AWS SDK**: Library to interact with AWS services
+- **Model Context Protocol SDK**: Framework for MCP implementation
+- **ES Modules**: Modern JavaScript module system
+
+### Visual Overview
+
+```
+User → Windsurf → Cascade → MCP Server → AWS CodePipeline
+    ↑                                         |
+    |                                         |
+    └─────────────── Results ────────────────┘
+```
+
+## 2. Getting Started: Step by Step
+
+### Setting Up Your Project
+
+1. **Create a new project folder**
+   ```bash
+   mkdir my-mcp-server
+   cd my-mcp-server
+   ```
+
+2. **Initialize Node.js project**
+   ```bash
+   npm init -y
+   ```
+
+3. **Install dependencies**
+   ```bash
+   npm install @modelcontextprotocol/sdk express aws-sdk cors body-parser dotenv
+   npm install --save-dev typescript @types/express @types/node @types/cors @types/body-parser
+   ```
+
+4. **Create TypeScript configuration**
+   Create a file named `tsconfig.json`:
+   ```json
+   {
+     "compilerOptions": {
+       "target": "ES2020",
+       "module": "NodeNext",
+       "moduleResolution": "NodeNext",
+       "esModuleInterop": true,
+       "outDir": "./dist",
+       "strict": true
+     },
+     "include": ["src/**/*"]
+   }
+   ```
+
+5. **Add scripts to package.json**
+   Update your `package.json` to include:
+   ```json
+   "scripts": {
+     "build": "tsc",
+     "start": "node dist/index.js",
+     "dev": "ts-node src/index.ts"
+   }
+   ```
+
+### Folder Structure Overview
+
+Create this folder structure step by step:
+
+```
+my-mcp-server/
+├── src/
+│   ├── config/                  # Server configuration
+│   ├── controllers/             # HTTP request handlers
+│   ├── routes/                  # API routes
+│   ├── services/                # Business logic & AWS API calls
+│   ├── utils/                   # Helper functions
+│   ├── types/                   # TypeScript interfaces
+│   ├── index.ts                 # Entry point
+│   └── mcp-server.ts            # MCP implementation
+├── .env                         # Environment variables
+├── .gitignore                   # Git ignore rules
+└── package.json                 # Project config
+```
+
+**Pro Tip**: Don't worry about creating all files at once. We'll build them one by one as we progress.
+
+### How the Files Work Together
+
+```
+┌─────────────┐     ┌──────────────┐     ┌────────────┐     ┌─────────┐
+│   index.ts  │────▶│ mcp-server.ts│────▶│ controllers │────▶│services │────▶ AWS
+└─────────────┘     └──────────────┘     └────────────┘     └─────────┘
+      ▲                    ▲                   ▲                 ▲
+      │                    │                   │                 │
+      └─ Starts both ◀────┘                   │                 │
+         servers           Uses interfaces ────┘                 │
+                           from types/         Calls methods ───┘
+```
+
+## 3. Building Your First MCP Server Components
+
+### Core Concepts Made Simple
+
+Let's break down each key component with simple explanations and examples:
+
+### Step 1: Define Your Environment Helper
+
+Create `src/utils/env.ts` to load environment variables:
+
+```typescript
+// src/utils/env.ts
+import dotenv from 'dotenv';
+import path from 'path';
+
+export function loadEnv(): void {
+  // Load .env file if it exists
+  dotenv.config();
+  console.log('Environment variables loaded');
+}
+
+// Helper to get environment variables
+export function getEnv(key: string, defaultValue: string = ''): string {
+  return process.env[key] || defaultValue;
+}
+```
+
+### Step 2: Create Server Configuration
+
+Create `src/config/server-config.ts` to define your server's metadata:
+
+```typescript
+// src/config/server-config.ts
+export const serverConfig = {
+  name: "my-aws-mcp-server",
+  version: "1.0.0",
+  displayName: "My AWS MCP Server",
+  description: "MCP server for interacting with AWS services",
+  publisher: "Your Name",
+  license: "MIT"
+};
+```
+
+### Step 3: Define Your AWS Service
+
+Create `src/services/aws-service.ts` to handle AWS SDK calls:
+
+```typescript
+// src/services/aws-service.ts
+import AWS from 'aws-sdk';
+import { getEnv } from '../utils/env.js';
+
+export class AWSService {
+  private awsService: AWS.Service;
+
+  constructor() {
+    const region = getEnv('AWS_REGION', 'us-west-2');
+    
+    // Initialize the specific AWS SDK service you need
+    // For example, for S3:
+    this.awsService = new AWS.S3({ region });
+    
+    console.log(`AWS service initialized with region: ${region}`);
+  }
+
+  // Add methods for each AWS operation
+  // Example for S3 listBuckets:
+  async listItems() {
+    try {
+      // Replace this with your specific AWS service call
+      const result = await this.awsService.listBuckets().promise();
+      return result;
+    } catch (error) {
+      console.error('Error listing items:', error);
+      throw error;
+    }
+  }
+}
+```
+
+### Step 4: Create a Controller
+
+Create `src/controllers/aws-controller.ts` to handle HTTP requests:
+
+```typescript
+// src/controllers/aws-controller.ts
+import { Request, Response } from 'express';
+import { AWSService } from '../services/aws-service.js';
+
+export class AWSController {
+  private awsService: AWSService;
+
+  constructor() {
+    this.awsService = new AWSService();
+  }
+
+  // Example controller method
+  listItems = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const items = await this.awsService.listItems();
+      res.status(200).json({ items });
+    } catch (error) {
+      console.error('Error in listItems controller:', error);
+      res.status(500).json({ error: 'Failed to list items' });
+    }
+  };
+}
+```
+
+### Step 5: Define Routes
+
+Create `src/routes/aws-routes.ts` to define API endpoints:
+
+```typescript
+// src/routes/aws-routes.ts
+import { Router } from 'express';
+import { AWSController } from '../controllers/aws-controller.js';
+
+const router = Router();
+const awsController = new AWSController();
+
+// Define routes
+router.get('/items', awsController.listItems);
+
+export default router;
+```
+
+### Understanding MCP Interfaces
+
+Here are the key interfaces you'll use, simplified:
+
+#### Tool Interface
+```typescript
+// This is what Cascade sends to your MCP server
+interface Tool {
+  name: string;         // The name of the tool (e.g., "list_buckets")
+  parameters: {         // The parameters the user provided
+    [key: string]: any  // E.g., { "region": "us-west-2" }
+  };
+}
+```
+
+#### Tool Definition Interface
+```typescript
+// This tells Cascade what tools your MCP server provides
+interface ToolDefinition {
+  name: string;          // Tool name (e.g., "list_buckets")
+  description: string;   // Human-readable description
+  parameters: {          // What parameters this tool accepts
+    type: "object",
+    properties: {        // Define each parameter
+      paramName: {
+        type: "string",   // Parameter type
+        description: "What this parameter does"
+      }
+      // More parameters...
+    }
+  }
+}
+```
+
+## 4. Creating the MCP Server Implementation
+
+### Step 6: Implement the MCP Server
+
+Create `src/mcp-server.ts` - this is the heart of your MCP implementation:
+
+```typescript
+// src/mcp-server.ts
+import { Server as BaseMCPServer } from "@modelcontextprotocol/sdk/server/index.js";
+
+// Define your tools
+const toolDefinitions = [
+  {
+    name: "list_items",              // Tool name for Cascade to call
+    description: "List all items",    // Human-readable description
+    parameters: {
+      type: "object",
+      properties: {}
+    }
+  },
+  // Add more tool definitions here
+];
+
+// Create the MCP server class
+export class MCPServer extends BaseMCPServer {
+  constructor() {
+    super();
+    this.registerTools();
+  }
+
+  private registerTools() {
+    // Register each tool with its handler
+    this.router.register("list_items", this.handleTool.bind(this));
+    // Register more tools here
+  }
+
+  // Handle tool execution
+  async handleTool(tool) {
+    try {
+      // Call your API server
+      const response = await fetch(`http://localhost:3000/api/${tool.name.replace('_', '/')}`, {
+        method: "GET",
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+      
+      // Return success response
+      return {
+        status: 'success',
+        result: data
+      };
+    } catch (error) {
+      console.error(`Error executing tool ${tool.name}:`, error);
+      
+      // Return error response
+      return {
+        status: 'error',
+        error: {
+          code: 'EXECUTION_ERROR',
+          message: `Failed to execute tool: ${error.message}`
+        }
+      };
+    }
+  }
+
+  // Return tool definitions to the MCP framework
+  getToolDefinitions() {
+    return toolDefinitions;
+  }
+}
+```
+
+### Step 7: Create the Main Entry Point
+
+Create `src/index.ts` to start both servers:
+
+```typescript
+// src/index.ts
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { loadEnv, getEnv } from './utils/env.js';
+import express from 'express';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import { MCPServer } from './mcp-server.js';
+import awsRoutes from './routes/aws-routes.js';
+
+// Load environment variables
+loadEnv();
+
+// Create and start the MCP server
+const server = new MCPServer();
+const transport = new StdioServerTransport();
+server.connect(transport);
+
+// Create and start the HTTP server
+const app = express();
+const PORT = parseInt(getEnv('PORT', '3000'));
+
+// Configure middleware
+app.use(cors());
+app.use(bodyParser.json());
+
+// Configure routes
+app.use('/api', awsRoutes);
+
+// Health check route
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+// Start the HTTP server
+app.listen(PORT, () => {
+  console.log(`HTTP server listening on port ${PORT}`);
+});
+
+console.log("MCP Server started successfully");
+```
+
+### How the Processing Flow Works (Made Simple)
+
+```
+1. User: "List my AWS items"
+   ↓
+2. Cascade understands and calls your tool "list_items"
+   ↓
+3. MCP Server receives the request through StdioServerTransport
+   ↓
+4. MCPServer.handleTool() makes an HTTP request to your Express server
+   ↓
+5. Express routes the request to your controller
+   ↓
+6. Controller calls your service
+   ↓
+7. Service makes AWS API call
+   ↓
+8. Results travel back up the chain to the user
+```
+
+**Key Point**: Your MCP server actually has TWO servers running:
+1. The MCP protocol server (communicates with Cascade)
+2. An HTTP server (handles API requests from the MCP server)
+
+## 5. Final Steps and Troubleshooting
+
+### Step 8: Configure Environment Variables
+
+Create a `.env` file in your project root:
+
+```
+PORT=3000
+AWS_REGION=us-west-2
+AWS_ACCESS_KEY_ID=your_access_key_here
+AWS_SECRET_ACCESS_KEY=your_secret_key_here
+```
+
+### Step 9: Create a .gitignore File
+
+Create a `.gitignore` file to prevent sensitive information from being committed:
+
+```
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+```
+
+### Step 10: Build and Run Your Server
+
+```bash
+# Build your TypeScript code
+npm run build
+
+# Start your server
+npm start
+```
+
+### Step 11: Configure Windsurf
+
+Update your Windsurf MCP configuration (typically in `~/.codeium/windsurf/mcp_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "your-service-name": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "path/to/your-mcp-server/dist/index.js"
+      ],
+      "env": {
+        "AWS_REGION": "your-region",
+        "AWS_ACCESS_KEY_ID": "your-access-key",
+        "AWS_SECRET_ACCESS_KEY": "your-secret-key"
+      }
+    }
+  }
+}
+```
+
+### Adding New AWS Operations (Simple Steps)
+
+1. **Add a service method**: Create a new method in your service class
+2. **Add a controller method**: Create a handler in your controller
+3. **Add a route**: Connect the controller to an API endpoint
+4. **Add a tool definition**: Tell Cascade about your new capability
+5. **Register the tool handler**: Connect the tool to your implementation
+
+### Common Issues and Solutions
+
+#### 1. "Cannot find module" errors
+
+**Problem**: TypeScript can't find imported modules
+
+**Solution**: 
+- Make sure you're using `.js` extensions in imports (ES modules requirement)  
+- Check that the module is installed in package.json
+
+#### 2. AWS SDK errors
+
+**Problem**: AWS operations fail with authentication errors
+
+**Solution**:
+- Verify your AWS credentials in the .env file
+- Check that the region is correct
+- Ensure proper IAM permissions for the AWS operations
+
+#### 3. MCP Server not communicating with Windsurf
+
+**Problem**: Cascade can't access your tools
+
+**Solution**:
+- Check the path to your index.js file in mcp_config.json
+- Verify that you're returning proper tool definitions
+- Make sure both your Express and MCP servers are running
+
+#### 4. "TypeError: Cannot read property of undefined"
+
+**Problem**: Trying to access properties that don't exist
+
+**Solution**:
+- Use optional chaining (`?.`) when accessing nested properties
+- Add null checks before accessing properties
+- Add console.log statements to debug object structures
+
+### What Next?
+
+Once you have your basic MCP server working:
+
+1. **Expand functionality**: Add more AWS operations
+2. **Refine error handling**: Provide detailed error messages
+3. **Add validation**: Validate inputs before processing
+4. **Implement testing**: Add unit and integration tests
+5. **Improve documentation**: Add comments and API docs
+
+---
+
+By following this beginner-friendly guide, you can create your own MCP server for any AWS service. Start with something simple, get it working, and then gradually expand its capabilities. Good luck with your MCP development journey!
+
+================
+File: package.json
+================
+{
+  "name": "mcp-codepipeline-server",
+  "version": "1.0.0",
+  "description": "MCP server for AWS CodePipeline integration",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc -w & nodemon dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "aws",
+    "codepipeline",
+    "mcp",
+    "server"
+  ],
+  "author": "Cuong T Nguyen",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.10",
+    "nodemon": "^3.1.0",
+    "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "aws-sdk": "^2.1692.0",
+    "body-parser": "^1.20.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
+
+================
+File: README.md
+================
+# AWS CodePipeline MCP Server
+
+This is a Model Context Protocol (MCP) server that integrates with AWS CodePipeline, allowing you to manage your pipelines through Windsurf and Cascade. The server provides a standardized interface for interacting with AWS CodePipeline services.
+
+**Author:** Cuong T Nguyen
+
+## Features
+
+- List all pipelines
+- Get pipeline state and detailed pipeline definitions
+- List pipeline executions
+- Approve or reject manual approval actions
+- Retry failed stages
+- Trigger pipeline executions
+- View pipeline execution logs
+- Stop pipeline executions
+- Tag pipeline resources
+- Create webhooks for automatic pipeline triggering
+- Get pipeline performance metrics
+
+## Prerequisites
+
+- Node.js (v14 or later)
+- AWS account with CodePipeline access
+- AWS credentials with permissions for CodePipeline, CloudWatch, and IAM (for tagging)
+- Windsurf IDE with Cascade AI assistant
+
+## Installation
+
+1. Clone this repository:
+
+```bash
+git clone https://github.com/cuongdev/mcp-codepipeline-server.git
+cd mcp-codepipeline-server
+```
+
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+3. Create a `.env` file based on the `.env.example` template:
+
+```bash
+cp .env.example .env
+```
+
+4. Update the `.env` file with your AWS credentials and configuration:
+
+```
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_access_key_id
+AWS_SECRET_ACCESS_KEY=your_secret_access_key
+PORT=3000
+```
+
+> **Note**: For security, never commit your `.env` file to version control.
+
+## Usage
+
+### Build the project
+
+```bash
+npm run build
+```
+
+### Start the server
+
+```bash
+npm start
+```
+
+For development with auto-restart:
+
+```bash
+npm run dev
+```
+
+## Integration with Windsurf
+
+This MCP server is designed to work with Windsurf, allowing Cascade to interact with AWS CodePipeline through natural language requests.
+
+### Setup Steps
+
+1. Make sure the server is running:
+
+```bash
+npm start
+```
+
+2. Add the server configuration to your Windsurf MCP config file at `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+   "mcpServers": {
+    "codepipeline": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "path/to/mcp-codepipeline-server/dist/index.js"
+      ],
+      "env": {
+        "AWS_REGION": "us-east-1",
+        "AWS_ACCESS_KEY_ID": "your_access_key_id",
+        "AWS_SECRET_ACCESS_KEY": "your_secret_access_key"
+      }
+    }
+  }
+}
+```
+
+3. Create the directory if it doesn't exist:
+
+```bash
+mkdir -p ~/.codeium/windsurf
+touch ~/.codeium/windsurf/mcp_config.json
+```
+
+4. Restart Windsurf to load the new MCP server configuration
+
+### Using with Cascade
+
+Once configured, you can interact with AWS CodePipeline using natural language in Windsurf. For example:
+
+- "List all my CodePipeline pipelines"
+- "Show me the current state of my 'production-deploy' pipeline"
+- "Trigger the 'test-build' pipeline"
+- "Get metrics for my 'data-processing' pipeline"
+- "Create a webhook for my 'frontend-deploy' pipeline"
+
+Cascade will translate these requests into the appropriate MCP tool calls.
+
+## MCP Tools
+
+### Core Pipeline Management
+
+| Tool Name | Description | Parameters |
+|-----------|-------------|------------|
+| `list_pipelines` | List all CodePipeline pipelines | None |
+| `get_pipeline_state` | Get the state of a specific pipeline | `pipelineName`: Name of the pipeline |
+| `list_pipeline_executions` | List executions for a specific pipeline | `pipelineName`: Name of the pipeline |
+| `trigger_pipeline` | Trigger a pipeline execution | `pipelineName`: Name of the pipeline |
+| `stop_pipeline_execution` | Stop a pipeline execution | `pipelineName`: Name of the pipeline<br>`executionId`: Execution ID<br>`reason`: Optional reason for stopping |
+
+### Pipeline Details and Metrics
+
+| Tool Name | Description | Parameters |
+|-----------|-------------|------------|
+| `get_pipeline_details` | Get the full definition of a pipeline | `pipelineName`: Name of the pipeline |
+| `get_pipeline_execution_logs` | Get logs for a pipeline execution | `pipelineName`: Name of the pipeline<br>`executionId`: Execution ID |
+| `get_pipeline_metrics` | Get performance metrics for a pipeline | `pipelineName`: Name of the pipeline<br>`period`: Optional metric period in seconds<br>`startTime`: Optional start time for metrics<br>`endTime`: Optional end time for metrics |
+
+### Pipeline Actions and Integrations
+
+| Tool Name | Description | Parameters |
+|-----------|-------------|------------|
+| `approve_action` | Approve or reject a manual approval action | `pipelineName`: Name of the pipeline<br>`stageName`: Name of the stage<br>`actionName`: Name of the action<br>`token`: Approval token<br>`approved`: Boolean indicating approval or rejection<br>`comments`: Optional comments |
+| `retry_stage` | Retry a failed stage | `pipelineName`: Name of the pipeline<br>`stageName`: Name of the stage<br>`pipelineExecutionId`: Execution ID |
+| `tag_pipeline_resource` | Add or update tags for a pipeline resource | `pipelineName`: Name of the pipeline<br>`tags`: Array of key-value pairs for tagging |
+| `create_pipeline_webhook` | Create a webhook for a pipeline | `pipelineName`: Name of the pipeline<br>`webhookName`: Name for the webhook<br>`targetAction`: Target action for the webhook<br>`authentication`: Authentication type<br>`authenticationConfiguration`: Optional auth config<br>`filters`: Optional event filters |
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Connection refused error**:
+   - Ensure the server is running on the specified port
+   - Check if the port is blocked by a firewall
+
+2. **AWS credential errors**:
+   - Verify your AWS credentials in the `.env` file
+   - Ensure your IAM user has the necessary permissions
+
+3. **Windsurf not detecting the MCP server**:
+   - Check the `mcp_config.json` file format
+   - Ensure the server URL is correct
+   - Restart Windsurf after making changes
+
+### Logs
+
+The server logs information to the console. Check these logs for troubleshooting:
+
+```bash
+# Run with more verbose logging
+DEBUG=* npm start
+```
+
+## Examples
+
+### Creating a Webhook for GitHub Integration
+
+```json
+{
+  "pipelineName": "my-pipeline",
+  "webhookName": "github-webhook",
+  "targetAction": "Source",
+  "authentication": "GITHUB_HMAC",
+  "authenticationConfiguration": {
+    "SecretToken": "my-secret-token"
+  },
+  "filters": [
+    {
+      "jsonPath": "$.ref",
+      "matchEquals": "refs/heads/main"
+    }
+  ]
+}
+```
+
+### Getting Pipeline Metrics
+
+```json
+{
+  "pipelineName": "my-pipeline",
+  "period": 86400,
+  "startTime": "2025-03-10T00:00:00Z",
+  "endTime": "2025-03-17T23:59:59Z"
+}
+```
+
+## License
+
+ISC
+
+================
+File: tsconfig.json
+================
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "typeRoots": ["./node_modules/@types", "./src/types"]
+  },
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules", 
+    "**/*.test.ts", 
+    "src/controllers/**/*", 
+    "src/routes/**/*", 
+    "src/services/**/*", 
+    "src/mcp-server.ts"
+  ]
+}
+
+
+
+================================================================
+End of Codebase
+================================================================
