@@ -247,33 +247,6 @@ const transport = new StdioServerTransport();
 // Connect the server to the transport
 server.connect(transport);
 
-// Import and initialize the HTTP server
-import express from 'express';
-import bodyParser from 'body-parser';
-import cors from 'cors';
-import codePipelineRoutes from './routes/codepipeline.routes.js';
-
-const app = express();
-const PORT = parseInt(getEnv('PORT', '3000'));
-
-// Configure middleware
-app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-
-// Configure routes
-app.use('/api', codePipelineRoutes);
-
-// Health check route
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
-});
-
-// Start the HTTP server
-app.listen(PORT, () => {
-  console.log(`HTTP server listening on port ${PORT}`);
-});
-
 ["SIGINT", "SIGTERM"].forEach((signal) => {
   process.on(signal, async () => {
       console.log(`Received ${signal}, shutting down...`);
