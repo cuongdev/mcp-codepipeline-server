@@ -1,10 +1,14 @@
-[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/cuongdev-mcp-codepipeline-server-badge.png)](https://mseep.ai/app/cuongdev-mcp-codepipeline-server)
-
 # AWS CodePipeline MCP Server
+
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/cuongdev-mcp-codepipeline-server-badge.png)](https://mseep.ai/app/cuongdev-mcp-codepipeline-server)
 
 This is a Model Context Protocol (MCP) server that integrates with AWS CodePipeline, allowing you to manage your pipelines through Windsurf and Cascade. The server provides a standardized interface for interacting with AWS CodePipeline services.
 
 **Author:** Cuong T Nguyen
+
+<a href="https://glama.ai/mcp/servers/@cuongdev/mcp-codepipeline-server">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@cuongdev/mcp-codepipeline-server/badge" alt="AWS CodePipeline Server MCP server" />
+</a>
 
 ## Features
 
