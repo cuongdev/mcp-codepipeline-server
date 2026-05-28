@@ -6,7 +6,8 @@ import { existsSync } from 'fs';
  * Load environment variables from .env file
  */
 export function loadEnv(): void {
-  const envPath = resolve(process.cwd(), '.env');
+  const envPath = resolve(import.meta.dirname, '../../.env');
+  const envPathCwd = resolve(process.cwd(), '.env');
   
   if (existsSync(envPath)) {
     console.log(`Loading environment variables from ${envPath}`);
@@ -18,7 +19,18 @@ export function loadEnv(): void {
       console.log('Environment variables loaded successfully');
     }
   } else {
-    console.warn(`No .env file found at ${envPath}`);
+    if (existsSync(envPathCwd)) {
+      console.log(`Loading environment variables from ${envPathCwd}`);
+      const result = dotenv.config({ path: envPathCwd });
+      
+      if (result.error) {
+        console.error('Error loading .env file from current working directory:', result.error);
+      } else {
+        console.log('Environment variables loaded successfully from current working directory');
+      }
+    } else {
+      console.warn(`No .env file found at ${envPath} or ${envPathCwd}`);
+    }
   }
 }
 
