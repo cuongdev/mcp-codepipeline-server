@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/cuongdev-mcp-codepipeline-server-badge.png)](https://mseep.ai/app/cuongdev-mcp-codepipeline-server)
+
 # AWS CodePipeline MCP Server
 
 This is a Model Context Protocol (MCP) server that integrates with AWS CodePipeline, allowing you to manage your pipelines through Windsurf and Cascade. The server provides a standardized interface for interacting with AWS CodePipeline services.
